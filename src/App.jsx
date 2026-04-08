@@ -574,7 +574,16 @@ async function sbFetchReferrals(userId,token){
 async function callClaude(messages,system=""){
   const body={model:"claude-sonnet-4-20250514",max_tokens:1000,messages};
   if(system)body.system=system;
-  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  // Use proxy in production, direct API in development
+  const endpoint=window.location.hostname==="localhost"
+    ?"https://api.anthropic.com/v1/messages"
+    :"/api/claude";
+  const headers={"Content-Type":"application/json"};
+  if(window.location.hostname==="localhost"){
+    headers["x-api-key"]=import.meta.env.VITE_ANTHROPIC_KEY||"";
+    headers["anthropic-version"]="2023-06-01";
+  }
+  const r=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
   const d=await r.json();
   return d.content?.map(b=>b.text||"").join("")||"";
 }
