@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const SB_URL  = "https://syfagxyidrrthxsvrlse.supabase.co";
 const SB_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5ZmFneHlpZHJydGh4c3ZybHNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0Nzc2NzQsImV4cCI6MjA5MTA1MzY3NH0.SbjgGYi8LXo1wEKjK47DQWY9_O-f2lt0OwR_qRGXR_M";
+const supabase = createClient(SB_URL, SB_KEY);
 const SK_PUB  = "pk_test_51TJD4pJRhblJ0xU6cAHxinDn6NWkEgjxRFmTOeQlkrE1ZPJSeDWlOfQMb7tWFinQsyojvypU0kV6bpbxyLVc6zUg00EtsrRNrx";
 const SK_PRICE= "price_1TJD7XJRhblJ0xU6tr15a3B6";
-// ⬇ Create a Payment Link in Stripe dashboard (Product catalog → LawnPro Pro → Create payment link)
-// Then paste the URL here, e.g. "https://buy.stripe.com/test_xxxx"
 const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/fZu00k2jf0rOePx2mLbQY02";
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
@@ -517,58 +517,52 @@ const scoreClass=s=>s>=65?"sg":s>=45?"sf":"sp";
 const fmtDate=d=>new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 const initials=email=>email?email[0].toUpperCase():"?";
 
-// ─── SUPABASE API ─────────────────────────────────────────────────────────────
-const sbHeaders=(token)=>({
-  "apikey":SB_KEY,
-  "Content-Type":"application/json",
-  ...(token?{"Authorization":`Bearer ${token}`}:{})
-});
-
+// ─── SUPABASE API (using official client) ─────────────────────────────────────
 async function sbSignUp(email,password,name){
-  const r=await fetch(`${SB_URL}/auth/v1/signup`,{method:"POST",headers:sbHeaders(),"body":JSON.stringify({email,password,data:{name}})});
-  return r.json();
+  const {data,error}=await supabase.auth.signUp({email,password,options:{data:{name}}});
+  if(error)return{error};
+  return data;
 }
 async function sbSignIn(email,password){
-  const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:sbHeaders(),body:JSON.stringify({email,password})});
-  return r.json();
+  const {data,error}=await supabase.auth.signInWithPassword({email,password});
+  if(error)return{error};
+  return{user:data.user,access_token:data.session?.access_token,...data};
 }
-async function sbSignOut(token){
-  await fetch(`${SB_URL}/auth/v1/logout`,{method:"POST",headers:sbHeaders(token)});
+async function sbSignOut(){
+  await supabase.auth.signOut();
 }
-async function sbGetProfile(userId,token){
-  const r=await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${userId}&select=*`,{headers:{...sbHeaders(token),"Accept":"application/json"}});
-  const data=await r.json();
-  return Array.isArray(data)?data[0]:null;
+async function sbGetProfile(userId){
+  const{data,error}=await supabase.from("profiles").select("*").eq("id",userId).single();
+  if(error)return null;
+  return data;
 }
-async function sbUpsertProfile(userId,email,name,token){
-  await fetch(`${SB_URL}/rest/v1/profiles`,{method:"POST",headers:{...sbHeaders(token),"Prefer":"resolution=merge-duplicates"},body:JSON.stringify({id:userId,email,name:name||email.split("@")[0],plan:"free"})});
+async function sbUpsertProfile(userId,email,name){
+  await supabase.from("profiles").upsert({id:userId,email,name:name||email.split("@")[0],plan:"free"});
 }
-async function sbUpdatePlan(userId,plan,token){
-  await fetch(`${SB_URL}/rest/v1/profiles?id=eq.${userId}`,{method:"PATCH",headers:sbHeaders(token),body:JSON.stringify({plan})});
+async function sbUpdatePlan(userId,plan){
+  await supabase.from("profiles").update({plan}).eq("id",userId);
 }
-async function sbFetchReports(userId,token){
-  const r=await fetch(`${SB_URL}/rest/v1/reports?user_id=eq.${userId}&order=created_at.desc&select=*`,{headers:{...sbHeaders(token),"Accept":"application/json"}});
-  return r.json();
+async function sbFetchReports(userId){
+  const{data}=await supabase.from("reports").select("*").eq("user_id",userId).order("created_at",{ascending:false});
+  return data||[];
 }
-async function sbSaveReport(userId,report,token){
+async function sbSaveReport(userId,report){
   const payload={user_id:userId,score:report.score,status:report.status,summary:report.summary,grass_type:report.detected_grass||report.grassType||"Unknown",region:report.region||"",data:JSON.stringify(report)};
-  await fetch(`${SB_URL}/rest/v1/reports`,{method:"POST",headers:{...sbHeaders(token),"Prefer":"return=minimal"},body:JSON.stringify(payload)});
+  await supabase.from("reports").insert(payload);
 }
 async function sbRequestPasswordReset(email){
-  const r=await fetch(`${SB_URL}/auth/v1/recover`,{method:"POST",headers:sbHeaders(),body:JSON.stringify({email})});
-  return r.json();
+  const{error}=await supabase.auth.resetPasswordForEmail(email,{redirectTo:`${window.location.origin}/reset-password`});
+  if(error)return{error};
+  return{};
 }
-async function sbUpdatePassword(newPassword,token){
-  const r=await fetch(`${SB_URL}/auth/v1/user`,{method:"PUT",headers:sbHeaders(token),body:JSON.stringify({password:newPassword})});
-  return r.json();
+async function sbSaveReferral(referrerId,referredEmail){
+  await supabase.from("referrals").insert({referrer_id:referrerId,referred_email:referredEmail,status:"pending"});
 }
-async function sbSaveReferral(referrerId,referredEmail,token){
-  await fetch(`${SB_URL}/rest/v1/referrals`,{method:"POST",headers:{...sbHeaders(token),"Prefer":"return=minimal"},body:JSON.stringify({referrer_id:referrerId,referred_email:referredEmail,status:"pending"})});
+async function sbFetchReferrals(userId){
+  const{data}=await supabase.from("referrals").select("*").eq("referrer_id",userId);
+  return data||[];
 }
-async function sbFetchReferrals(userId,token){
-  const r=await fetch(`${SB_URL}/rest/v1/referrals?referrer_id=eq.${userId}&select=*`,{headers:{...sbHeaders(token),"Accept":"application/json"}});
-  return r.json();
-}
+
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(messages,system=""){
@@ -646,7 +640,7 @@ function AuthModal({onClose,onSuccess,referralCode=""}){
         // Auto sign in after signup (email confirmation disabled)
         const login=await sbSignIn(email,password);
         if(login.error){setMode("confirmed");setLoading(false);return;}
-        await sbUpsertProfile(login.user.id,email,name,login.access_token);
+        await sbUpsertProfile(login.user.id,email,name);
         onSuccess({...login.user,access_token:login.access_token,name:name||email.split("@")[0],referralCode});
       } else {
         const res=await sbSignIn(email,password);
@@ -931,10 +925,10 @@ export default function LawnPro(){
           const session=JSON.parse(s.value);
           setUser(session);
           // Load profile
-          const prof=await sbGetProfile(session.id,session.access_token);
+          const prof=await sbGetProfile(session.id);
           if(prof)setProfile(prof);else setProfile({plan:"free"});
           // Load reports
-          loadCloudReports(session.id,session.access_token);
+          loadCloudReports(session.id);
         } else {
           // Load local reports
           try{const r=await window.storage.get("lp_reports");if(r)setReports(JSON.parse(r.value))}catch(e){}
@@ -947,10 +941,10 @@ export default function LawnPro(){
     })();
   },[]);
 
-  async function loadCloudReports(userId,token){
+  async function loadCloudReports(userId){
     setReportsLoading(true);
     try{
-      const data=await sbFetchReports(userId,token);
+      const data=await sbFetchReports(userId);
       if(Array.isArray(data))setReports(data);
     }catch(e){}
     setReportsLoading(false);
@@ -1065,20 +1059,20 @@ export default function LawnPro(){
     window.storage?.set("lp_session",JSON.stringify(userData));
     setShowAuth(false);
     // Load profile
-    let prof=await sbGetProfile(userData.id,userData.access_token);
+    let prof=await sbGetProfile(userData.id);
     if(!prof){
-      await sbUpsertProfile(userData.id,userData.email,userData.name,userData.access_token);
+      await sbUpsertProfile(userData.id,userData.email,userData.name);
       prof={plan:"free",email:userData.email,name:userData.name};
     }
     setProfile(prof);
     // Load cloud reports
-    loadCloudReports(userData.id,userData.access_token);
+    loadCloudReports(userData.id);
     loadReferrals();
     showToast(`Welcome back, ${userData.name||userData.email.split("@")[0]}! 👋`);
   }
 
   async function handleSignOut(){
-    if(user)await sbSignOut(user.access_token);
+    if(user)await sbSignOut();
     setUser(null);setProfile(null);
     window.storage?.set("lp_session","");
     // Fall back to local reports
@@ -1092,7 +1086,7 @@ export default function LawnPro(){
       window.open(STRIPE_PAYMENT_LINK,"_blank");
       showToast("Opening secure checkout…");
     } else {
-      if(user){sbUpdatePlan(user.id,"pro",user.access_token);setProfile(p=>({...p,plan:"pro"}));showToast("Pro activated! 🎉");}
+      if(user){sbUpdatePlan(user.id,"pro");setProfile(p=>({...p,plan:"pro"}));showToast("Pro activated! 🎉");}
       else setShowAuth(true);
     }
     setShowPro(false);
@@ -1130,7 +1124,7 @@ export default function LawnPro(){
 
   async function loadReferrals(){
     if(!user)return;
-    try{const data=await sbFetchReferrals(user.id,user.access_token);if(Array.isArray(data))setReferrals(data);}catch(e){}
+    try{const data=await sbFetchReferrals(user.id);if(Array.isArray(data))setReferrals(data);}catch(e){}
   }
 
   function handleProductClick(product,isSponsored=false){
@@ -1179,8 +1173,8 @@ export default function LawnPro(){
     if(isLoggedIn&&user){
       // Save to Supabase cloud
       try{
-        await sbSaveReport(user.id,result,user.access_token);
-        await loadCloudReports(user.id,user.access_token);
+        await sbSaveReport(user.id,result);
+        await loadCloudReports(user.id);
         setResultSaved(true);
         showToast("Report saved to cloud ☁️");
       }catch(e){showToast("Save failed — check connection");}
