@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const SB_URL  = "https://syfagxyidrrthxsvrlse.supabase.co";
-const SB_KEY  = "sb_publishable_Y_qLfAR5_9Pd-dO27eLzDA_IchUoBxg";
+const SB_KEY  = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN5ZmFneHlpZHJydGh4c3ZybHNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0Nzc2NzQsImV4cCI6MjA5MTA1MzY3NH0.SbjgGYi8LXo1wEKjK47DQWY9_O-f2lt0OwR_qRGXR_M";
 const SK_PUB  = "pk_test_51TJD4pJRhblJ0xU6cAHxinDn6NWkEgjxRFmTOeQlkrE1ZPJSeDWlOfQMb7tWFinQsyojvypU0kV6bpbxyLVc6zUg00EtsrRNrx";
 const SK_PRICE= "price_1TJD7XJRhblJ0xU6tr15a3B6";
 // ⬇ Create a Payment Link in Stripe dashboard (Product catalog → LawnPro Pro → Create payment link)
