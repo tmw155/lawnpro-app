@@ -7,7 +7,7 @@ const SK_PUB  = "pk_test_51TJD4pJRhblJ0xU6cAHxinDn6NWkEgjxRFmTOeQlkrE1ZPJSeDWlOf
 const SK_PRICE= "price_1TJD7XJRhblJ0xU6tr15a3B6";
 // ⬇ Create a Payment Link in Stripe dashboard (Product catalog → LawnPro Pro → Create payment link)
 // Then paste the URL here, e.g. "https://buy.stripe.com/test_xxxx"
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_28EeVe0hng6Y60UgwO9bO00";
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/fZu00k2jf0rOePx2mLbQY02";
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const css = `
