@@ -915,29 +915,49 @@ export default function LawnPro(){
   // Load persisted session & data
   useEffect(()=>{
     (async()=>{
-      try{const u=await window.storage.get("lp_usage");if(u)setUsageCount(+u.value)}catch(e){}
-      try{const a=await window.storage.get("lp_affiliate");if(a)setAffiliateStats(JSON.parse(a.value))}catch(e){}
-      try{const lp=await window.storage.get("lp_lawn_profile");if(lp){const d=JSON.parse(lp.value);setLawnProfile({grassType:d.grassType||"",soilType:d.soilType||"",sunExposure:d.sunExposure||"",lawnSize:d.lawnSize||""});if(d.name)setUserInfo(p=>({...p,name:d.name}));if(d.region)setUserInfo(p=>({...p,region:d.region}));}}catch(e){}
-      // Restore session
+      // Load local preferences
+      try{const u=localStorage.getItem("lp_usage");if(u)setUsageCount(+u)}catch(e){}
+      try{const a=localStorage.getItem("lp_affiliate");if(a)setAffiliateStats(JSON.parse(a))}catch(e){}
+      try{const lp=localStorage.getItem("lp_lawn_profile");if(lp){const d=JSON.parse(lp);setLawnProfile({grassType:d.grassType||"",soilType:d.soilType||"",sunExposure:d.sunExposure||"",lawnSize:d.lawnSize||""});if(d.name)setUserInfo(p=>({...p,name:d.name}));if(d.region){setUserInfo(p=>({...p,region:d.region}));setPage("main");}}}catch(e){}
+
+      // Restore Supabase session automatically
       try{
-        const s=await window.storage.get("lp_session");
-        if(s){
-          const session=JSON.parse(s.value);
-          setUser(session);
-          // Load profile
-          const prof=await sbGetProfile(session.id);
+        const{data:{session}}=await supabase.auth.getSession();
+        if(session?.user){
+          const userData={
+            ...session.user,
+            access_token:session.access_token,
+            name:session.user.user_metadata?.name||session.user.email.split("@")[0]
+          };
+          setUser(userData);
+          const prof=await sbGetProfile(session.user.id);
           if(prof)setProfile(prof);else setProfile({plan:"free"});
-          // Load reports
-          loadCloudReports(session.id);
+          loadCloudReports(session.user.id);
+          setPage("main");
         } else {
-          // Load local reports
-          try{const r=await window.storage.get("lp_reports");if(r)setReports(JSON.parse(r.value))}catch(e){}
+          try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r))}catch(e){}
         }
-      }catch(e){}
-      // Check for Stripe payment success redirect
-      if(typeof window!=="undefined"&&window.location.search.includes("payment_success=true")){
-        // Will handle after session loads
-      }
+      }catch(e){
+        try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r))}catch(e2){}}
+
+      // Listen for auth state changes (login/logout)
+      supabase.auth.onAuthStateChange(async(event,session)=>{
+        if(event==="SIGNED_IN"&&session?.user){
+          const userData={
+            ...session.user,
+            access_token:session.access_token,
+            name:session.user.user_metadata?.name||session.user.email.split("@")[0]
+          };
+          setUser(userData);
+          const prof=await sbGetProfile(session.user.id);
+          if(prof)setProfile(prof);else{await sbUpsertProfile(session.user.id,session.user.email,userData.name);setProfile({plan:"free"});}
+          loadCloudReports(session.user.id);
+          setPage("main");
+        } else if(event==="SIGNED_OUT"){
+          setUser(null);setProfile(null);
+          try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r));else setReports([])}catch(e){setReports([]);}
+        }
+      });
     })();
   },[]);
 
@@ -1056,7 +1076,7 @@ export default function LawnPro(){
 
   async function handleAuthSuccess(userData){
     setUser(userData);
-    window.storage?.set("lp_session",JSON.stringify(userData));
+    
     setShowAuth(false);
     // Load profile
     let prof=await sbGetProfile(userData.id);
@@ -1074,9 +1094,9 @@ export default function LawnPro(){
   async function handleSignOut(){
     if(user)await sbSignOut();
     setUser(null);setProfile(null);
-    window.storage?.set("lp_session","");
+    
     // Fall back to local reports
-    try{const r=await window.storage.get("lp_reports");if(r)setReports(JSON.parse(r.value));else setReports([])}catch(e){setReports([])}
+    try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r));else setReports([])}catch(e){setReports([])}
     showToast("Signed out successfully");
     setTab("home");
   }
@@ -1131,7 +1151,7 @@ export default function LawnPro(){
     const earn=isSponsored?2.40:0.90;
     const updated={clicks:affiliateStats.clicks+1,sponsoredClicks:affiliateStats.sponsoredClicks+(isSponsored?1:0),estEarnings:Math.round((affiliateStats.estEarnings+earn)*100)/100};
     setAffiliateStats(updated);
-    window.storage?.set("lp_affiliate",JSON.stringify(updated));
+    localStorage.setItem("lp_affiliate",JSON.stringify(updated));
     if(product.url)window.open(product.url,"_blank");
     showToast(isSponsored?`Opening ${product.brand||product.name}… Sponsored`:`Opening ${product.name}… Affiliate link`);
   }
@@ -1154,7 +1174,7 @@ export default function LawnPro(){
     try{
       const analysis=await analyzeLawn({imageBase64:imageB64,grassType:grassType||lawnProfile.grassType,region:userInfo.region,treatments,notes,lawnProfile});
       clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);
-      if(!isPro){const nu=usageCount+1;setUsageCount(nu);window.storage?.set("lp_usage",String(nu));}
+      if(!isPro){const nu=usageCount+1;setUsageCount(nu);localStorage.setItem("lp_usage",String(nu));}
       setLoadStep(4);
       setTimeout(()=>{
         setResult({...analysis,imageBase64:imageB64,date:new Date().toISOString(),grassType,region:userInfo.region});
@@ -1162,7 +1182,7 @@ export default function LawnPro(){
       },500);
     }catch(err){
       clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);
-      if(!isPro){const nu=usageCount+1;setUsageCount(nu);window.storage?.set("lp_usage",String(nu));}
+      if(!isPro){const nu=usageCount+1;setUsageCount(nu);localStorage.setItem("lp_usage",String(nu));}
       setResult({score:64,status:"Fair",detected_grass:grassType||"Bermuda",grass_confidence:"medium",summary:"Your lawn shows moderate health with some improvement opportunities. Color appears slightly pale and moisture distribution is uneven.",scientific:{color_health:58,color_health_note:"Slightly pale, possible nitrogen deficiency",coverage:75,coverage_note:"Some bare patches visible",moisture:50,moisture_note:"Dry in sections",nutrient_status:"Low nitrogen, adequate phosphorus",soil_condition:"Likely compacted — consider aerating",issues_detected:["Dry stress","Bare patches","Light weed presence"]},simple_advice:["<strong>Water more consistently</strong> — aim for 1–1.5 inches per week before 10 AM.","<strong>Apply nitrogen fertilizer</strong> to restore green color over 2–3 weeks.","<strong>Overseed bare patches</strong> with matching grass seed — keep moist.","<strong>Aerate the soil</strong> if it feels hard — helps nutrients reach roots."],product_tags:["nitrogen","moisture","patches"],weekly_plan:{Monday:["Water deeply 20–25 mins"],Tuesday:["Inspect for weeds, hand-pull any found"],Wednesday:["Apply fertilizer if soil is dry enough"],Thursday:["Rest — observe lawn"],Friday:["Water lightly if no rain"],Saturday:["Mow at proper height","Spot-treat visible weeds"],Sunday:["Rest — observe lawn for changes"]},imageBase64:imageB64,date:new Date().toISOString(),grassType,region:userInfo.region});
       setResultSaved(false);setUploadView("result");
     }
@@ -1182,7 +1202,7 @@ export default function LawnPro(){
       // Save locally
       const newReports=[result,...reports];
       setReports(newReports);
-      window.storage?.set("lp_reports",JSON.stringify(newReports));
+      localStorage.setItem("lp_reports",JSON.stringify(newReports));
       setResultSaved(true);
       showToast("Report saved locally");
     }
@@ -1223,8 +1243,13 @@ export default function LawnPro(){
           <h1 className="ob-title">Your lawn,<br/><em>perfectly</em><br/>healthy.</h1>
           <p className="ob-sub">AI-powered analysis, personalized care plans, a built-in lawn expert, and smart reminders — all in one place.</p>
           <button className="bp" onClick={()=>setPage("location")}>Get Started →</button>
+          <div style={{marginTop:16,textAlign:"center"}}>
+            <span style={{fontSize:14,color:"rgba(255,255,255,.65)"}}>Already have an account? </span>
+            <span style={{fontSize:14,color:"#a8e06a",fontWeight:700,cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowAuth(true)}>Sign in</span>
+          </div>
         </div>
       </div>
+      {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onSuccess={handleAuthSuccess}/>}
     </div></>
   );
 
@@ -1309,7 +1334,7 @@ export default function LawnPro(){
             </div>
           </div>
 
-          <button className="bp" onClick={()=>{window.storage?.set("lp_lawn_profile",JSON.stringify({...lawnProfile,region:userInfo.region,name:userInfo.name}));setPage("main");}}>
+          <button className="bp" onClick={()=>{localStorage.setItem("lp_lawn_profile",JSON.stringify({...lawnProfile,region:userInfo.region,name:userInfo.name}));setPage("main");}}>
             Start Using LawnPro →
           </button>
           <span className="skip-link" onClick={()=>setPage("main")}>Skip for now</span>
