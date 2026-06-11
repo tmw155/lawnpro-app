@@ -1793,7 +1793,9 @@ export default function LawnPro(){
             <div style={{fontSize:13,color:"var(--muted)",marginTop:4}}>{reports.length} saved {reports.length===1?"report":"reports"}</div>
           </div>
           {isLoggedIn&&<div className="cloud-badge">☁️ Synced to your account</div>}
-          <div className="sh">💰 Revenue Dashboard</div>
+          {/* Revenue dashboard — admin only */}
+          {user?.email==="taylormathewwilson@yahoo.com"&&(
+          <><div className="sh">💰 Revenue Dashboard</div>
           <div className="revenue-card">
             <div className="rev-title">Affiliate & Sponsorship Earnings</div>
             <div className="rev-grid">
@@ -1802,7 +1804,8 @@ export default function LawnPro(){
               <div className="rev-stat"><div className="rev-num">{affiliateStats.sponsoredClicks}</div><div className="rev-label">Sponsored</div></div>
             </div>
             <div className="rev-note">Tap any product or partner link to track clicks. Estimates based on avg. affiliate commission rates.</div>
-          </div>
+          </div></>
+          )}
           {reports.length>=2&&(
             <>
               <ScoreChart reports={reports}/>
