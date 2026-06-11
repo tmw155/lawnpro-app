@@ -1220,7 +1220,10 @@ export default function LawnPro(){
     try{
       const reply=await chatWithAssistant(newMsgs.map(m=>({role:m.role,content:m.content})),reports[0]);
       setChatMsgs(p=>[...p,{role:"assistant",content:reply}]);
-    }catch(e){setChatMsgs(p=>[...p,{role:"assistant",content:"Sorry, I had trouble connecting. Please try again!"}]);}
+    }catch(e){
+      console.error("Chat error:",e);
+      setChatMsgs(p=>[...p,{role:"assistant",content:`Sorry, I had trouble connecting. Error: ${e.message||"Unknown error"}. Please try again!`}]);
+    }
     setChatLoading(false);
   }
 
