@@ -930,7 +930,7 @@ export default function LawnPro(){
   const [affiliateStats,setAffiliateStats]=useState({clicks:0,sponsoredClicks:0,estEarnings:0});
 
   // Live weather
-  const [weather,setWeather]=useState(WEATHER_FALLBACK);
+  const [weather,setWeather]=useState({icon:"🌤️",temp:"--°F",desc:"Loading weather…",humidity:"--%",lawn:"Checking conditions…",loading:true});
   const [weatherLoading,setWeatherLoading]=useState(false);
 
   // Social sharing
