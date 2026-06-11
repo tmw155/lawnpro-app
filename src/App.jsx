@@ -439,15 +439,12 @@ const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunda
 const SEASONAL={"Northeast US":{season:"Spring",emoji:"🌸",tips:["Apply pre-emergent herbicide to stop crabgrass early.","Begin mowing once grass hits 3–4 inches.","Core aerate to relieve winter frost compaction.","Start a balanced 10-10-10 fertilizer program."]},"Southeast US":{season:"Summer",emoji:"☀️",tips:["Water 2–3× per week before 10 AM.","Mow warm-season grass at proper height for heat.","Scout for chinch bugs and treat within 48 hours.","Apply slow-release fertilizer for sustained feeding."]},"Midwest US":{season:"Fall",emoji:"🍂",tips:["Overseed bare patches before first frost.","Reduce mowing frequency as growth slows.","Apply winterizer fertilizer high in potassium.","Rake leaves promptly to prevent smothering."]},"California":{season:"Dry Season",emoji:"🌵",tips:["Deep-water once or twice weekly for deep roots.","Raise mowing height to shade roots.","Check for grub damage near brown patches.","Hold off on fertilizing during drought stress."]},default:{season:"Spring",emoji:"🌱",tips:["Begin regular watering as temperatures rise.","Assess lawn for bare or patchy areas.","Dethatch if thatch layer exceeds ½ inch.","Start a seasonal fertilization schedule."]}};
 const OWM_KEY="285dd438d175f098e92feef30eb00c7e";
 
-// Region → city mapping for OpenWeatherMap
+// Region → city fallback (used if geolocation is denied)
 const REGION_CITIES={
-  "Northeast US":"Boston,US","Southeast US":"Atlanta,US","Midwest US":"Chicago,US",
+  "Northeast US":"Boston,US","Southeast US":"Atlanta,US","Midwest US":"Kansas City,US",
   "Southwest US":"Phoenix,US","Pacific Northwest":"Seattle,US","California":"Los Angeles,US",
   "Mountain West":"Denver,US","UK/Europe":"London,GB","Australia":"Sydney,AU","Other":"New York,US"
 };
-
-// Fallback static weather (used while loading or if API fails)
-const WEATHER_FALLBACK={icon:"🌤️",temp:"--°F",desc:"Loading weather…",humidity:"--%",lawn:"Checking conditions…",loading:true};
 
 function owmIconToEmoji(icon=""){
   if(icon.startsWith("01"))return"☀️";
@@ -473,29 +470,64 @@ function getLawnAdvice(temp,humidity,desc){
   return"Good lawn care conditions 🌿";
 }
 
-async function fetchWeather(region){
-  const city=REGION_CITIES[region]||REGION_CITIES["Other"];
+async function fetchWeatherByCoords(lat,lon){
+  const url=`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OWM_KEY}&units=imperial`;
+  const r=await fetch(url);
+  if(!r.ok)throw new Error("Weather fetch failed");
+  return r.json();
+}
+
+async function fetchWeatherByCity(city){
   const url=`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${OWM_KEY}&units=imperial`;
   const r=await fetch(url);
   if(!r.ok)throw new Error("Weather fetch failed");
-  const d=await r.json();
+  return r.json();
+}
+
+function parseOWMResponse(d){
   const temp=Math.round(d.main.temp);
   const humidity=d.main.humidity;
   const desc=d.weather[0].description.charAt(0).toUpperCase()+d.weather[0].description.slice(1);
   const icon=owmIconToEmoji(d.weather[0].icon);
   const feelsLike=Math.round(d.main.feels_like);
   const wind=Math.round(d.wind.speed);
-  return{
-    icon,
-    temp:`${temp}°F`,
-    feelsLike:`${feelsLike}°F`,
-    desc,
-    humidity:`${humidity}%`,
-    wind:`${wind} mph`,
-    lawn:getLawnAdvice(temp,humidity,desc),
-    city:d.name,
-    loading:false
-  };
+  return{icon,temp:`${temp}°F`,feelsLike:`${feelsLike}°F`,desc,humidity:`${humidity}%`,wind:`${wind} mph`,lawn:getLawnAdvice(temp,humidity,desc),city:d.name,loading:false};
+}
+
+async function fetchWeather(region){
+  // Try geolocation first for accurate local weather
+  return new Promise((resolve)=>{
+    if(typeof navigator!=="undefined"&&navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        async(pos)=>{
+          try{
+            const d=await fetchWeatherByCoords(pos.coords.latitude,pos.coords.longitude);
+            resolve(parseOWMResponse(d));
+          }catch(e){
+            // Fall back to region city
+            try{
+              const city=REGION_CITIES[region]||REGION_CITIES["Other"];
+              const d=await fetchWeatherByCity(city);
+              resolve(parseOWMResponse(d));
+            }catch(e2){resolve(null);}
+          }
+        },
+        async()=>{
+          // Geolocation denied — use region city
+          try{
+            const city=REGION_CITIES[region]||REGION_CITIES["Other"];
+            const d=await fetchWeatherByCity(city);
+            resolve(parseOWMResponse(d));
+          }catch(e){resolve(null);}
+        },
+        {timeout:5000}
+      );
+    } else {
+      // No geolocation — use region city
+      const city=REGION_CITIES[region]||REGION_CITIES["Other"];
+      fetchWeatherByCity(city).then(d=>resolve(parseOWMResponse(d))).catch(()=>resolve(null));
+    }
+  });
 }
 const PRODUCTS=[
   {emoji:"🌿",name:"Scotts Turf Builder",why:"Boosts nitrogen for a deeper, lasting green",price:null,tag:"nitrogen",sponsored:true,url:"https://amzn.to/4txdODr"},
@@ -971,19 +1003,20 @@ export default function LawnPro(){
   }
 
   async function loadWeather(region){
-    if(!region)return;
     setWeatherLoading(true);
     try{
-      const data=await fetchWeather(region);
-      setWeather(data);
+      const data=await fetchWeather(region||"Midwest US");
+      if(data)setWeather(data);
+      else setWeather({icon:"🌤️",temp:"--°F",desc:"Weather unavailable",humidity:"--%",wind:"-- mph",lawn:"Check your local forecast",city:"",loading:false});
     }catch(e){
       setWeather({icon:"🌤️",temp:"--°F",desc:"Weather unavailable",humidity:"--%",wind:"-- mph",lawn:"Check your local forecast",city:"",loading:false});
     }
     setWeatherLoading(false);
   }
 
+  // Load weather on mount (geolocation) and when region changes
   useEffect(()=>{
-    if(userInfo.region)loadWeather(userInfo.region);
+    loadWeather(userInfo.region);
   },[userInfo.region]);
 
   // Register service worker
