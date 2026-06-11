@@ -15,7 +15,7 @@ module.exports = async function handler(req, res) {
     // Override model to ensure we use a valid current model
     const requestBody = { ...req.body };
     if (!requestBody.model || requestBody.model === 'claude-sonnet-4-20250514') {
-      requestBody.model = 'claude-haiku-4-5-20251001';
+      requestBody.model = 'claude-sonnet-4-6';
     }
  
     const response = await fetch('https://api.anthropic.com/v1/messages', {
