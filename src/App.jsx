@@ -436,7 +436,35 @@ const GRASS=["Bermuda","Zoysia","Kentucky Bluegrass","St. Augustine","Fescue","R
 const REGIONS=["Northeast US","Southeast US","Midwest US","Southwest US","Pacific Northwest","California","Mountain West","UK/Europe","Australia","Other"];
 const TREATMENTS=["Watered recently","Fertilized","Aerated","Overseeded","Mowed short","Applied pesticide","Nothing recently"];
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const SEASONAL={"Northeast US":{season:"Spring",emoji:"🌸",tips:["Apply pre-emergent herbicide to stop crabgrass early.","Begin mowing once grass hits 3–4 inches.","Core aerate to relieve winter frost compaction.","Start a balanced 10-10-10 fertilizer program."]},"Southeast US":{season:"Summer",emoji:"☀️",tips:["Water 2–3× per week before 10 AM.","Mow warm-season grass at proper height for heat.","Scout for chinch bugs and treat within 48 hours.","Apply slow-release fertilizer for sustained feeding."]},"Midwest US":{season:"Fall",emoji:"🍂",tips:["Overseed bare patches before first frost.","Reduce mowing frequency as growth slows.","Apply winterizer fertilizer high in potassium.","Rake leaves promptly to prevent smothering."]},"California":{season:"Dry Season",emoji:"🌵",tips:["Deep-water once or twice weekly for deep roots.","Raise mowing height to shade roots.","Check for grub damage near brown patches.","Hold off on fertilizing during drought stress."]},default:{season:"Spring",emoji:"🌱",tips:["Begin regular watering as temperatures rise.","Assess lawn for bare or patchy areas.","Dethatch if thatch layer exceeds ½ inch.","Start a seasonal fertilization schedule."]}};
+// ── Date-aware seasonal tips ───────────────────────────────────────────────────
+function getCurrentSeason(){
+  const m=new Date().getMonth();
+  if(m>=2&&m<=4)return"Spring";
+  if(m>=5&&m<=7)return"Summer";
+  if(m>=8&&m<=10)return"Fall";
+  return"Winter";
+}
+const SEASONAL_TIPS={
+  Spring:{emoji:"🌸",tips:["Apply pre-emergent herbicide before soil temps hit 55°F to stop crabgrass.","Begin mowing once grass reaches 3–4 inches — never remove more than ⅓ at a time.","Core aerate to relieve winter compaction and improve water penetration.","Start a balanced 10-10-10 fertilizer program as growth picks up.","Overseed thin areas while soil temps are still cool for best germination.","Check irrigation heads and fix any winter damage before the season starts.","Pull or spot-treat dandelions before they go to seed.","Test your soil pH — spring is the best time to add lime if needed.","Rake out matted dead grass to let new growth breathe.","Sharpen your mower blade — a clean cut prevents disease and stress."]},
+  Summer:{emoji:"☀️",tips:["Water deeply 2–3× per week before 10 AM to minimize evaporation.","Raise your mowing height — taller grass shades roots and retains moisture.","Scout for chinch bugs, grubs, and armyworms — treat within 48 hours of spotting.","Apply slow-release fertilizer for sustained feeding without burning.","Leave grass clippings on the lawn — they return nitrogen and reduce watering needs.","Avoid fertilizing during a drought — wait for rain before feeding.","Spot-treat weeds rather than broad spraying during summer heat.","Check for dry spots and adjust irrigation zones that may be underwatering.","Avoid mowing during the hottest part of the day to reduce grass stress.","Apply a thin layer of compost to improve moisture retention in dry patches."]},
+  Fall:{emoji:"🍂",tips:["Overseed bare and thin patches before the first frost for spring results.","Apply winterizer fertilizer high in potassium to harden roots for winter.","Rake leaves promptly — matted leaves smother grass and breed disease.","Core aerate in early fall to give overseeded areas the best start.","Continue mowing until growth stops — never let grass get too tall before winter.","Reduce watering frequency as temperatures cool, but don't stop completely.","Apply a broadleaf herbicide while weeds are still actively growing.","Drain and winterize irrigation systems before the first hard freeze.","Test soil now so you can amend over winter and be ready for spring.","Dethatch if buildup exceeds ½ inch — fall is ideal for cool-season grass."]},
+  Winter:{emoji:"❄️",tips:["Stay off frozen or frost-covered grass — footprints cause lasting damage.","Keep mower blades and equipment cleaned and sharpened for spring.","Plan your spring fertilization and overseeding schedule now.","Order grass seed and supplies before spring rush prices hit.","Check for vole or mole damage after snow melts — treat tunnels early.","Inspect your irrigation system for cracked pipes after hard freezes.","Review your lawn care records and note what worked last season.","Research grass types that perform better in your region.","Clean and lubricate all lawn equipment so it's ready when spring arrives.","Consider a soil test so amendments are ready to apply at first thaw."]}
+};
+const REGIONAL_BONUS={
+  "Southeast US":{Summer:["St. Augustine and Bermuda lawns love summer — feed every 6–8 weeks.","Watch for Take-All Root Rot in warm, wet conditions."],Fall:["Overseed Bermuda with ryegrass for winter color."]},
+  "Pacific Northwest":{Winter:["Cool-season grasses stay active — light mowing may still be needed.","Moss thrives in wet winters — apply iron sulfate to suppress it."],Fall:["Aerate aggressively before the rainy season begins."]},
+  "California":{Summer:["Follow local watering restrictions and water deeply but infrequently.","Buffalo grass and zoysia are drought-tolerant alternatives."]},
+  "Southwest US":{Summer:["Water at night if temps exceed 110°F to prevent evaporation.","Bermuda grass thrives in intense heat — it's your best bet."]}
+};
+function getSeasonalData(region){
+  const season=getCurrentSeason();
+  const base=SEASONAL_TIPS[season];
+  const extras=REGIONAL_BONUS[region]?.[season]||[];
+  const all=[...base.tips,...extras];
+  const start=(new Date().getDate()*3)%all.length;
+  const rotated=[...all.slice(start),...all.slice(0,start)];
+  return{season,emoji:base.emoji,tips:rotated.slice(0,3)};
+}
 const OWM_KEY="285dd438d175f098e92feef30eb00c7e";
 
 // Region → city fallback (used if geolocation is denied)
@@ -1260,7 +1288,7 @@ export default function LawnPro(){
     setChatLoading(false);
   }
 
-  const season=(SEASONAL[userInfo.region]||SEASONAL.default);
+  const season=getSeasonalData(userInfo.region);
   const latestCtx=result||reports[0];
   const parsedLatest=latestCtx?.data?JSON.parse(latestCtx.data):latestCtx;
   const productRecs=parsedLatest?.product_tags?PRODUCTS.filter(p=>parsedLatest.product_tags.includes(p.tag)).slice(0,3):PRODUCTS.slice(0,2);
