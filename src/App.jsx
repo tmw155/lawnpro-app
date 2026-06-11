@@ -566,9 +566,8 @@ async function sbFetchReferrals(userId){
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(messages,system=""){
-  const body={model:"claude-sonnet-4-20250514",max_tokens:1000,messages};
+  const body={model:"claude-haiku-4-5-20251001",max_tokens:1000,messages};
   if(system)body.system=system;
-  // Use proxy in production, direct API in development
   const endpoint=window.location.hostname==="localhost"
     ?"https://api.anthropic.com/v1/messages"
     :"/api/claude";
@@ -579,6 +578,7 @@ async function callClaude(messages,system=""){
   }
   const r=await fetch(endpoint,{method:"POST",headers,body:JSON.stringify(body)});
   const d=await r.json();
+  if(d.error){console.error("Claude API error:",d.error);throw new Error(d.error.message||"API error");}
   return d.content?.map(b=>b.text||"").join("")||"";
 }
 async function analyzeLawn({imageBase64,grassType,region,treatments,notes,lawnProfile={}}){
