@@ -566,7 +566,7 @@ async function sbFetchReferrals(userId){
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(messages,system=""){
-  const body={model:"claude-haiku-4-5-20251001",max_tokens:1000,messages};
+  const body={model:"claude-sonnet-4-6",max_tokens:1000,messages};
   if(system)body.system=system;
   const endpoint=window.location.hostname==="localhost"
     ?"https://api.anthropic.com/v1/messages"
