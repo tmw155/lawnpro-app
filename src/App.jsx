@@ -436,7 +436,6 @@ const GRASS=["Bermuda","Zoysia","Kentucky Bluegrass","St. Augustine","Fescue","R
 const REGIONS=["Northeast US","Southeast US","Midwest US","Southwest US","Pacific Northwest","California","Mountain West","UK/Europe","Australia","Other"];
 const TREATMENTS=["Watered recently","Fertilized","Aerated","Overseeded","Mowed short","Applied pesticide","Nothing recently"];
 const DAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-// ── Date-aware seasonal tips ───────────────────────────────────────────────────
 function getCurrentSeason(){
   const m=new Date().getMonth();
   if(m>=2&&m<=4)return"Spring";
@@ -466,14 +465,11 @@ function getSeasonalData(region){
   return{season,emoji:base.emoji,tips:rotated.slice(0,3)};
 }
 const OWM_KEY="285dd438d175f098e92feef30eb00c7e";
-
-// Region → city fallback (used if geolocation is denied)
 const REGION_CITIES={
   "Northeast US":"Boston,US","Southeast US":"Atlanta,US","Midwest US":"Kansas City,US",
   "Southwest US":"Phoenix,US","Pacific Northwest":"Seattle,US","California":"Los Angeles,US",
   "Mountain West":"Denver,US","UK/Europe":"London,GB","Australia":"Sydney,AU","Other":"New York,US"
 };
-
 function owmIconToEmoji(icon=""){
   if(icon.startsWith("01"))return"☀️";
   if(icon.startsWith("02"))return"🌤️";
@@ -484,7 +480,6 @@ function owmIconToEmoji(icon=""){
   if(icon.startsWith("50"))return"🌫️";
   return"🌤️";
 }
-
 function getLawnAdvice(temp,humidity,desc){
   const d=desc.toLowerCase();
   if(d.includes("rain")||d.includes("drizzle")||d.includes("shower"))return"Skip watering today 🌧️";
@@ -497,21 +492,18 @@ function getLawnAdvice(temp,humidity,desc){
   if(humidity<30)return"Very dry — water deeply today";
   return"Good lawn care conditions 🌿";
 }
-
 async function fetchWeatherByCoords(lat,lon){
   const url=`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OWM_KEY}&units=imperial`;
   const r=await fetch(url);
   if(!r.ok)throw new Error("Weather fetch failed");
   return r.json();
 }
-
 async function fetchWeatherByCity(city){
   const url=`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${OWM_KEY}&units=imperial`;
   const r=await fetch(url);
   if(!r.ok)throw new Error("Weather fetch failed");
   return r.json();
 }
-
 function parseOWMResponse(d){
   const temp=Math.round(d.main.temp);
   const humidity=d.main.humidity;
@@ -521,9 +513,7 @@ function parseOWMResponse(d){
   const wind=Math.round(d.wind.speed);
   return{icon,temp:`${temp}°F`,feelsLike:`${feelsLike}°F`,desc,humidity:`${humidity}%`,wind:`${wind} mph`,lawn:getLawnAdvice(temp,humidity,desc),city:d.name,loading:false};
 }
-
 async function fetchWeather(region){
-  // Try geolocation first for accurate local weather
   return new Promise((resolve)=>{
     if(typeof navigator!=="undefined"&&navigator.geolocation){
       navigator.geolocation.getCurrentPosition(
@@ -532,7 +522,6 @@ async function fetchWeather(region){
             const d=await fetchWeatherByCoords(pos.coords.latitude,pos.coords.longitude);
             resolve(parseOWMResponse(d));
           }catch(e){
-            // Fall back to region city
             try{
               const city=REGION_CITIES[region]||REGION_CITIES["Other"];
               const d=await fetchWeatherByCity(city);
@@ -541,7 +530,6 @@ async function fetchWeather(region){
           }
         },
         async()=>{
-          // Geolocation denied — use region city
           try{
             const city=REGION_CITIES[region]||REGION_CITIES["Other"];
             const d=await fetchWeatherByCity(city);
@@ -551,7 +539,6 @@ async function fetchWeather(region){
         {timeout:5000}
       );
     } else {
-      // No geolocation — use region city
       const city=REGION_CITIES[region]||REGION_CITIES["Other"];
       fetchWeatherByCity(city).then(d=>resolve(parseOWMResponse(d))).catch(()=>resolve(null));
     }
@@ -577,7 +564,7 @@ const scoreClass=s=>s>=65?"sg":s>=45?"sf":"sp";
 const fmtDate=d=>new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 const initials=email=>email?email[0].toUpperCase():"?";
 
-// ─── SUPABASE API (using official client) ─────────────────────────────────────
+// ─── SUPABASE API ─────────────────────────────────────────────────────────────
 async function sbSignUp(email,password,name){
   const {data,error}=await supabase.auth.signUp({email,password,options:{data:{name}}});
   if(error)return{error};
@@ -615,6 +602,15 @@ async function sbRequestPasswordReset(email){
   if(error)return{error};
   return{};
 }
+// ── NEW: Google OAuth ─────────────────────────────────────────────────────────
+async function sbSignInWithGoogle(){
+  const{error}=await supabase.auth.signInWithOAuth({
+    provider:"google",
+    options:{redirectTo:window.location.origin}
+  });
+  if(error)return{error};
+  return{};
+}
 async function sbSaveReferral(referrerId,referredEmail){
   await supabase.from("referrals").insert({referrer_id:referrerId,referred_email:referredEmail,status:"pending"});
 }
@@ -622,7 +618,6 @@ async function sbFetchReferrals(userId){
   const{data}=await supabase.from("referrals").select("*").eq("referrer_id",userId);
   return data||[];
 }
-
 
 // ─── CLAUDE API ───────────────────────────────────────────────────────────────
 async function callClaude(messages,system=""){
@@ -667,7 +662,7 @@ function Toggle({on,onToggle}){return <button className={`toggle${on?" on":""}`}
 function Toast({msg}){return <div className="toast">✓ {msg}</div>}
 
 function AuthModal({onClose,onSuccess,referralCode=""}){
-  const [mode,setMode]=useState("signin"); // signin | signup | forgot | reset_sent | confirmed
+  const [mode,setMode]=useState("signin");
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [name,setName]=useState("");
@@ -692,12 +687,9 @@ function AuthModal({onClose,onSuccess,referralCode=""}){
       if(mode==="signup"){
         const res=await sbSignUp(email,password,name);
         if(res.error){setErr(res.error.message||"Sign up failed.");setLoading(false);return;}
-        // Check if email confirmation is required
         if(res.user&&!res.session){
-          // Supabase requires email confirmation
           setMode("confirmed");setLoading(false);return;
         }
-        // Auto sign in after signup (email confirmation disabled)
         const login=await sbSignIn(email,password);
         if(login.error){setMode("confirmed");setLoading(false);return;}
         await sbUpsertProfile(login.user.id,email,name);
@@ -790,6 +782,33 @@ function AuthModal({onClose,onSuccess,referralCode=""}){
           <button className="bp" onClick={handleSubmit} disabled={loading}>
             {loading?"Please wait…":mode==="signin"?"Sign In →":mode==="signup"?"Create Free Account →":"Send Reset Link →"}
           </button>
+          {mode!=="forgot"&&(
+            <>
+              <div className="auth-divider">
+                <div className="auth-divider-line"/>
+                <div className="auth-divider-txt">or</div>
+                <div className="auth-divider-line"/>
+              </div>
+              <button
+                style={{width:"100%",padding:"13px 16px",border:"1.5px solid var(--tan)",borderRadius:50,fontSize:14,fontWeight:600,fontFamily:"'DM Sans',sans-serif",cursor:"pointer",background:"var(--warm)",color:"var(--text)",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"border-color .15s,box-shadow .15s",marginBottom:4}}
+                onMouseOver={e=>{e.currentTarget.style.borderColor="var(--sage-l)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(90,122,90,.1)"}}
+                onMouseOut={e=>{e.currentTarget.style.borderColor="var(--tan)";e.currentTarget.style.boxShadow="none"}}
+                onClick={async()=>{
+                  const res=await sbSignInWithGoogle();
+                  if(res?.error)setErr(res.error.message||"Google sign-in failed.");
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                  <path fill="none" d="M0 0h48v48H0z"/>
+                </svg>
+                Continue with Google
+              </button>
+            </>
+          )}
           {mode==="signin"&&<span className="auth-link" onClick={()=>{setMode("signup");setErr("")}}>Don't have an account? Sign up free</span>}
           {mode==="signup"&&<span className="auth-link" onClick={()=>{setMode("signin");setErr("")}}>Already have an account? Sign in</span>}
           {mode==="forgot"&&<span className="auth-link" onClick={()=>{setMode("signin");setErr("")}}>← Back to sign in</span>}
@@ -904,21 +923,13 @@ export default function LawnPro(){
   const [tab,setTab]=useState("home");
   const [userInfo,setUserInfo]=useState({name:"",region:""});
   const [lawnProfile,setLawnProfile]=useState({grassType:"",soilType:"",sunExposure:"",lawnSize:""});
-
-  // Auth state
-  const [user,setUser]=useState(null);       // {id, email, access_token, name}
-  const [profile,setProfile]=useState(null); // {plan: 'free'|'pro'}
+  const [user,setUser]=useState(null);
+  const [profile,setProfile]=useState(null);
   const [showAuth,setShowAuth]=useState(false);
   const [showPro,setShowPro]=useState(false);
-
-  // Derived
   const isPro=profile?.plan==="pro";
   const isLoggedIn=!!user;
-
-  // Usage (for non-logged-in free tier)
   const [usageCount,setUsageCount]=useState(0);
-
-  // Upload
   const [imageB64,setImageB64]=useState(null);
   const [grassType,setGrassType]=useState("");
   const [treatments,setTreatments]=useState([]);
@@ -927,67 +938,47 @@ export default function LawnPro(){
   const [loadStep,setLoadStep]=useState(0);
   const [result,setResult]=useState(null);
   const [resultSaved,setResultSaved]=useState(false);
-
-  // Reports (cloud when logged in, local fallback)
   const [reports,setReports]=useState([]);
   const [reportsLoading,setReportsLoading]=useState(false);
-  const [selectedReport,setSelectedReport]=useState(null); // for detail view
-
-  // Notifications
+  const [selectedReport,setSelectedReport]=useState(null);
   const [notifPermission,setNotifPermission]=useState(typeof Notification!=="undefined"?Notification.permission:"default");
   const [notifDismissed,setNotifDismissed]=useState(false);
-
-  // Referrals
   const [referrals,setReferrals]=useState([]);
   const [referralCopied,setReferralCopied]=useState(false);
-
-  // Reminders
   const [reminders,setReminders]=useState([
     {id:1,icon:"💧",name:"Watering Reminder",schedule:"Every 2 days, 7:00 AM",on:true},
     {id:2,icon:"✂️",name:"Mowing Alert",schedule:"Weekly, Saturday 9:00 AM",on:false},
     {id:3,icon:"🌿",name:"Fertilizing Reminder",schedule:"Every 6 weeks",on:true},
     {id:4,icon:"🔬",name:"Monthly Lawn Check",schedule:"1st of each month",on:false},
   ]);
-
-  // Chat
   const [chatMsgs,setChatMsgs]=useState([{role:"assistant",content:"Hi! I'm your **LawnPro Assistant** 🌿 — an AI lawn care expert. Ask me anything about your lawn and I'll give you personalized, science-backed advice."}]);
   const [chatInput,setChatInput]=useState("");
   const [chatLoading,setChatLoading]=useState(false);
-
-  // Affiliate
   const [affiliateStats,setAffiliateStats]=useState({clicks:0,sponsoredClicks:0,estEarnings:0});
-
-  // Live weather
   const [weather,setWeather]=useState({icon:"🌤️",temp:"--°F",desc:"Loading weather…",humidity:"--%",lawn:"Checking conditions…",loading:true});
   const [weatherLoading,setWeatherLoading]=useState(false);
-
-  // Social sharing
   const [showShare,setShowShare]=useState(false);
   const [shareCardUrl,setShareCardUrl]=useState(null);
   const shareCanvasRef=useRef();
-
   const [toast,setToast]=useState("");
   const fileRef=useRef();
   const chatEndRef=useRef();
 
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"})},[chatMsgs,chatLoading]);
 
-  // Load persisted session & data
   useEffect(()=>{
     (async()=>{
-      // Load local preferences
       try{const u=localStorage.getItem("lp_usage");if(u)setUsageCount(+u)}catch(e){}
       try{const a=localStorage.getItem("lp_affiliate");if(a)setAffiliateStats(JSON.parse(a))}catch(e){}
       try{const lp=localStorage.getItem("lp_lawn_profile");if(lp){const d=JSON.parse(lp);setLawnProfile({grassType:d.grassType||"",soilType:d.soilType||"",sunExposure:d.sunExposure||"",lawnSize:d.lawnSize||""});if(d.name)setUserInfo(p=>({...p,name:d.name}));if(d.region){setUserInfo(p=>({...p,region:d.region}));setPage("main");}}}catch(e){}
-
-      // Restore Supabase session automatically
       try{
         const{data:{session}}=await supabase.auth.getSession();
         if(session?.user){
+          // CHANGE 3a: full_name fallback for Google users
           const userData={
             ...session.user,
             access_token:session.access_token,
-            name:session.user.user_metadata?.name||session.user.email.split("@")[0]
+            name:session.user.user_metadata?.name||session.user.user_metadata?.full_name||session.user.email.split("@")[0]
           };
           setUser(userData);
           const prof=await sbGetProfile(session.user.id);
@@ -1000,13 +991,13 @@ export default function LawnPro(){
       }catch(e){
         try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r))}catch(e2){}}
 
-      // Listen for auth state changes (login/logout)
       supabase.auth.onAuthStateChange(async(event,session)=>{
         if(event==="SIGNED_IN"&&session?.user){
+          // CHANGE 3b: full_name fallback for Google users
           const userData={
             ...session.user,
             access_token:session.access_token,
-            name:session.user.user_metadata?.name||session.user.email.split("@")[0]
+            name:session.user.user_metadata?.name||session.user.user_metadata?.full_name||session.user.email.split("@")[0]
           };
           setUser(userData);
           const prof=await sbGetProfile(session.user.id);
@@ -1042,17 +1033,11 @@ export default function LawnPro(){
     setWeatherLoading(false);
   }
 
-  // Load weather on mount (geolocation) and when region changes
-  useEffect(()=>{
-    loadWeather(userInfo.region);
-  },[userInfo.region]);
+  useEffect(()=>{loadWeather(userInfo.region);},[userInfo.region]);
 
-  // Register service worker
   useEffect(()=>{
     if("serviceWorker" in navigator){
-      navigator.serviceWorker.register("/sw.js")
-        .then(()=>console.log("[LawnPro] SW registered"))
-        .catch(()=>{});
+      navigator.serviceWorker.register("/sw.js").then(()=>console.log("[LawnPro] SW registered")).catch(()=>{});
     }
   },[]);
 
@@ -1064,34 +1049,24 @@ export default function LawnPro(){
       const score=report.score;
       const grass=report.detected_grass||report.grassType||"Lawn";
       const status=scoreLabel(score);
-      // Background
       const grad=ctx.createLinearGradient(0,0,1080,1080);
       grad.addColorStop(0,"#1e3a1e");grad.addColorStop(.5,"#3a6a3a");grad.addColorStop(1,"#5a8a5a");
       ctx.fillStyle=grad;ctx.fillRect(0,0,1080,1080);
-      // Grid
       ctx.strokeStyle="rgba(255,255,255,0.04)";ctx.lineWidth=1;
       for(let i=0;i<1080;i+=60){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i,1080);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i);ctx.lineTo(1080,i);ctx.stroke();}
-      // Circle
       const cx=540,cy=460,cr=240;
       ctx.beginPath();ctx.arc(cx,cy,cr,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,0.08)";ctx.fill();
-      // Score arc
       ctx.beginPath();ctx.arc(cx,cy,cr-16,-Math.PI/2,-Math.PI/2+(score/100)*Math.PI*2);ctx.strokeStyle="#a8e06a";ctx.lineWidth=28;ctx.lineCap="round";ctx.stroke();
-      // Track
       ctx.beginPath();ctx.arc(cx,cy,cr-16,-Math.PI/2+(score/100)*Math.PI*2,-Math.PI/2+Math.PI*2);ctx.strokeStyle="rgba(255,255,255,0.1)";ctx.lineWidth=28;ctx.stroke();
-      // Score number
       ctx.fillStyle="#fff";ctx.font="bold 160px serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(score,cx,cy-20);
       ctx.fillStyle="rgba(255,255,255,0.5)";ctx.font="44px sans-serif";ctx.fillText("/100",cx,cy+80);
-      // Status badge
       const bW=260,bH=56,bX=cx-bW/2,bY=cy+120;
       ctx.beginPath();ctx.roundRect(bX,bY,bW,bH,28);ctx.fillStyle="#a8e06a";ctx.fill();
       ctx.fillStyle="#1e3a1e";ctx.font="bold 28px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(status,cx,bY+bH/2);
-      // Grass type
       ctx.fillStyle="rgba(255,255,255,0.75)";ctx.font="32px sans-serif";ctx.fillText(grass,cx,bY+bH+50);
-      // Branding
       ctx.fillStyle="rgba(255,255,255,0.9)";ctx.font="bold 48px serif";ctx.fillText("LawnPro",cx,80);
       ctx.fillStyle="rgba(168,224,106,0.9)";ctx.font="26px sans-serif";ctx.fillText("AI Lawn Health Score",cx,130);
       ctx.fillStyle="rgba(255,255,255,0.5)";ctx.font="28px sans-serif";ctx.fillText("lawnproapp.com",cx,1020);
-      // Leaf decorations
       ctx.font="120px serif";ctx.globalAlpha=0.07;ctx.fillStyle="#fff";
       ctx.textAlign="left";ctx.textBaseline="alphabetic";ctx.fillText("🌿",40,200);
       ctx.textAlign="right";ctx.fillText("🍃",1040,900);ctx.globalAlpha=1;
@@ -1137,16 +1112,13 @@ export default function LawnPro(){
 
   async function handleAuthSuccess(userData){
     setUser(userData);
-    
     setShowAuth(false);
-    // Load profile
     let prof=await sbGetProfile(userData.id);
     if(!prof){
       await sbUpsertProfile(userData.id,userData.email,userData.name);
       prof={plan:"free",email:userData.email,name:userData.name};
     }
     setProfile(prof);
-    // Load cloud reports
     loadCloudReports(userData.id);
     loadReferrals();
     showToast(`Welcome back, ${userData.name||userData.email.split("@")[0]}! 👋`);
@@ -1155,8 +1127,6 @@ export default function LawnPro(){
   async function handleSignOut(){
     if(user)await sbSignOut();
     setUser(null);setProfile(null);
-    
-    // Fall back to local reports
     try{const r=localStorage.getItem("lp_reports");if(r)setReports(JSON.parse(r));else setReports([])}catch(e){setReports([])}
     showToast("Signed out successfully");
     setTab("home");
@@ -1252,7 +1222,6 @@ export default function LawnPro(){
   async function saveReport(){
     if(!result||resultSaved)return;
     if(isLoggedIn&&user){
-      // Save to Supabase cloud
       try{
         await sbSaveReport(user.id,result);
         await loadCloudReports(user.id);
@@ -1260,7 +1229,6 @@ export default function LawnPro(){
         showToast("Report saved to cloud ☁️");
       }catch(e){showToast("Save failed — check connection");}
     } else {
-      // Save locally
       const newReports=[result,...reports];
       setReports(newReports);
       localStorage.setItem("lp_reports",JSON.stringify(newReports));
@@ -1296,7 +1264,6 @@ export default function LawnPro(){
   const usagePct=Math.min((usageCount/FREE_LIMIT)*100,100);
   const displayName=user?.name||user?.email?.split("@")[0]||userInfo.name||"";
 
-  // ── ONBOARDING ──
   if(page==="onboarding")return(
     <><style>{css}</style>
     <div className="app">
@@ -1317,7 +1284,6 @@ export default function LawnPro(){
     </div></>
   );
 
-  // ── LOCATION ──
   if(page==="location")return(
     <><style>{css}</style>
     <div className="app">
@@ -1341,7 +1307,6 @@ export default function LawnPro(){
     </div></>
   );
 
-  // ── FREE PROFILE SETUP ──
   if(page==="profile-setup"){
     const GRASS_TYPES=["Bermuda","Zoysia","Kentucky Bluegrass","St. Augustine","Fescue","Ryegrass","Centipede","Bahia","Not sure"];
     const SOIL_OPTS=[{icon:"🌑",label:"Clay",sub:"Heavy, slow draining"},{icon:"🏜️",label:"Sandy",sub:"Light, fast draining"},{icon:"🌿",label:"Loam",sub:"Rich, well balanced"},{icon:"❓",label:"Not sure",sub:"We'll help you find out"}];
@@ -1351,63 +1316,33 @@ export default function LawnPro(){
       <><style>{css}</style>
       <div className="app">
         <div className="profile-setup">
-          <div className="setup-steps">
-            {[0,1,2,3].map(i=><div key={i} className={`setup-step-dot${i<=2?" active":""}`}/>)}
-          </div>
+          <div className="setup-steps">{[0,1,2,3].map(i=><div key={i} className={`setup-step-dot${i<=2?" active":""}`}/>)}</div>
           <div className="eyebrow">Step 3 of 3</div>
           <div className="stitle" style={{marginBottom:6}}>Build your lawn profile</div>
           <div className="ssub" style={{marginBottom:24}}>This helps us give smarter, more personalized recommendations.</div>
-
           <div className="setup-card">
             <div className="setup-card-title">🌱 Grass type</div>
-            <div className="chip-group">
-              {GRASS_TYPES.map(g=>(
-                <button key={g} className={`chip${lawnProfile.grassType===g?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,grassType:g}))}>{g}</button>
-              ))}
-            </div>
+            <div className="chip-group">{GRASS_TYPES.map(g=><button key={g} className={`chip${lawnProfile.grassType===g?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,grassType:g}))}>{g}</button>)}</div>
           </div>
-
           <div className="setup-card">
             <div className="setup-card-title">🏔️ Soil type</div>
-            <div className="soil-grid">
-              {SOIL_OPTS.map(o=>(
-                <div key={o.label} className={`soil-opt${lawnProfile.soilType===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,soilType:o.label}))}>
-                  <div className="soil-opt-icon">{o.icon}</div>
-                  <div className="soil-opt-label">{o.label}</div>
-                  <div className="soil-opt-sub">{o.sub}</div>
-                </div>
-              ))}
-            </div>
+            <div className="soil-grid">{SOIL_OPTS.map(o=><div key={o.label} className={`soil-opt${lawnProfile.soilType===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,soilType:o.label}))}><div className="soil-opt-icon">{o.icon}</div><div className="soil-opt-label">{o.label}</div><div className="soil-opt-sub">{o.sub}</div></div>)}</div>
           </div>
-
           <div className="setup-card">
             <div className="setup-card-title">☀️ Sun exposure</div>
-            <div className="chip-group">
-              {SUN_OPTS.map(o=>(
-                <button key={o.label} className={`chip${lawnProfile.sunExposure===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,sunExposure:o.label}))}>{o.icon} {o.label}</button>
-              ))}
-            </div>
+            <div className="chip-group">{SUN_OPTS.map(o=><button key={o.label} className={`chip${lawnProfile.sunExposure===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,sunExposure:o.label}))}>{o.icon} {o.label}</button>)}</div>
           </div>
-
           <div className="setup-card">
             <div className="setup-card-title">📐 Lawn size</div>
-            <div className="chip-group">
-              {SIZE_OPTS.map(o=>(
-                <button key={o.label} className={`chip${lawnProfile.lawnSize===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,lawnSize:o.label}))}>{o.icon} {o.label}</button>
-              ))}
-            </div>
+            <div className="chip-group">{SIZE_OPTS.map(o=><button key={o.label} className={`chip${lawnProfile.lawnSize===o.label?" sel":""}`} onClick={()=>setLawnProfile(p=>({...p,lawnSize:o.label}))}>{o.icon} {o.label}</button>)}</div>
           </div>
-
-          <button className="bp" onClick={()=>{localStorage.setItem("lp_lawn_profile",JSON.stringify({...lawnProfile,region:userInfo.region,name:userInfo.name}));setPage("main");}}>
-            Start Using LawnPro →
-          </button>
+          <button className="bp" onClick={()=>{localStorage.setItem("lp_lawn_profile",JSON.stringify({...lawnProfile,region:userInfo.region,name:userInfo.name}));setPage("main");}}>Start Using LawnPro →</button>
           <span className="skip-link" onClick={()=>setPage("main")}>Skip for now</span>
         </div>
       </div></>
     );
   }
 
-  // ── MAIN APP ──
   return(
     <><style>{css}</style>
     <div className="app">
@@ -1415,54 +1350,35 @@ export default function LawnPro(){
       {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onSuccess={handleAuthSuccess}/>}
       {showPro&&<ProModal onClose={()=>setShowPro(false)} onUpgrade={handleUpgrade}/>}
 
-      {/* Nav */}
       <div className="nav">
         <div className="nav-logo">Lawn<em>Pro</em></div>
         <div className="nav-right">
           {isPro&&<div className="pro-badge">👑 PRO</div>}
-          {isLoggedIn?(
-            <div className="user-avatar" onClick={()=>setTab("account")} title="My Account">
-              {initials(user.email)}
-            </div>
-          ):(
-            <button className="icon-btn" onClick={()=>setShowAuth(true)} title="Sign In">👤</button>
-          )}
+          {isLoggedIn?<div className="user-avatar" onClick={()=>setTab("account")} title="My Account">{initials(user.email)}</div>:<button className="icon-btn" onClick={()=>setShowAuth(true)} title="Sign In">👤</button>}
           <button className="icon-btn">🔔</button>
         </div>
       </div>
 
-      {/* ── HOME ── */}
       {tab==="home"&&(
         <div className="screen">
           <div className="gsub">{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</div>
           <div className="gtitle">Hello{displayName?`, ${displayName}`:""} <em>👋</em></div>
-
-          {/* Sign in prompt for guests */}
           {!isLoggedIn&&(
             <div style={{background:"linear-gradient(135deg,#e8f4e8,#f0f8e8)",border:"1.5px solid var(--sage-xl)",borderRadius:"var(--r)",padding:"14px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setShowAuth(true)}>
               <div style={{fontSize:24}}>☁️</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:"var(--sage-d)",marginBottom:2}}>Sign in to sync your data</div>
-                <div style={{fontSize:12,color:"var(--muted)"}}>Save reports to the cloud and access them anywhere</div>
-              </div>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,color:"var(--sage-d)",marginBottom:2}}>Sign in to sync your data</div><div style={{fontSize:12,color:"var(--muted)"}}>Save reports to the cloud and access them anywhere</div></div>
               <div style={{fontSize:13,color:"var(--sage)",fontWeight:700}}>Sign in →</div>
             </div>
           )}
-
           <div className="weather-card" onClick={()=>loadWeather(userInfo.region)} style={{cursor:"pointer"}}>
             <div className="w-icon">{weather.loading?"⏳":weather.icon}</div>
             <div style={{flex:1}}>
               <div className="w-temp">{weather.temp}</div>
               <div className="w-desc">{weather.desc}{weather.city?` · ${weather.city}`:""}</div>
-              <div className="w-detail">
-                Humidity: {weather.humidity}
-                {weather.wind?` · Wind: ${weather.wind}`:""}
-                {weather.feelsLike?` · Feels like: ${weather.feelsLike}`:""}
-              </div>
+              <div className="w-detail">Humidity: {weather.humidity}{weather.wind?` · Wind: ${weather.wind}`:""}{weather.feelsLike?` · Feels like: ${weather.feelsLike}`:""}</div>
             </div>
             <div className="w-badge"><div className="w-badge-val">💧</div><div className="w-badge-label">{weather.lawn}</div></div>
           </div>
-
           {!isPro&&(
             <div className="usage-bar" onClick={()=>setShowPro(true)}>
               <div style={{flex:1}}>
@@ -1473,7 +1389,6 @@ export default function LawnPro(){
               <div style={{fontSize:20}}>👑</div>
             </div>
           )}
-
           <div className="hero" onClick={()=>{setTab("upload");resetUpload()}}>
             <div className="hero-bg">🌿</div>
             <div className="hero-label">AI Analysis</div>
@@ -1481,21 +1396,18 @@ export default function LawnPro(){
             <div className="hero-sub">Upload a photo for an instant health score, grass detection, and care plan.</div>
             <button className="hero-btn">Upload Photo →</button>
           </div>
-
           <div className="grid2">
             <div className="mini" onClick={()=>setTab("assistant")}><div className="mini-icon">🤖</div><div className="mini-title">AI Assistant</div><div className="mini-sub">Ask the lawn expert</div></div>
             <div className="mini" onClick={()=>setTab("reports")}><div className="mini-icon">📋</div><div className="mini-title">My Reports</div><div className="mini-sub">{reports.length} saved {reports.length===1?"report":"reports"}</div></div>
             <div className="mini" onClick={()=>setTab("reminders")}><div className="mini-icon">⏰</div><div className="mini-title">Reminders</div><div className="mini-sub">{reminders.filter(r=>r.on).length} active alerts</div></div>
             <div className="mini" onClick={()=>requirePro(()=>setTab("reports"))}><div className="mini-icon">📊</div><div className="mini-title">Compare</div><div className="mini-sub">Side-by-side reports</div>{!isPro&&<div className="pro-lock">👑</div>}</div>
           </div>
-
           <div className="sh">🌍 Seasonal Tips</div>
           <div className="season-card">
             <div className="season-badge">{season.emoji} {season.season} — {userInfo.region||"General"}</div>
             <div className="season-title">{season.season} Lawn Care</div>
             {season.tips.map((t,i)=><div className="season-tip" key={i}><div className="season-dot"/>{t}</div>)}
           </div>
-
           <div className="sh">🤝 Brand Partners</div>
           <div className="partner-strip">
             <div className="partner-strip-title">Trusted brands · tap to shop</div>
@@ -1513,20 +1425,15 @@ export default function LawnPro(){
         </div>
       )}
 
-      {/* ── UPLOAD ── */}
       {tab==="upload"&&uploadView==="form"&&(
         <div className="screen">
           <div style={{marginBottom:22}}><div className="eyebrow">Lawn Analysis</div><div className="stitle">Upload Your Lawn Photo</div><div className="ssub">AI detects grass type, scores health, and builds your care plan.</div></div>
-
-          {/* Show profile pre-fill if available */}
           {(lawnProfile.grassType||lawnProfile.soilType||lawnProfile.sunExposure)&&(
             <div style={{background:"var(--sage-xl)",borderRadius:"var(--rs)",padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10,fontSize:12}}>
-              <span>🌿</span>
-              <span style={{color:"var(--sage-d)",fontWeight:600}}>Using your lawn profile</span>
+              <span>🌿</span><span style={{color:"var(--sage-d)",fontWeight:600}}>Using your lawn profile</span>
               <span style={{color:"var(--sage)",marginLeft:"auto",cursor:"pointer",textDecoration:"underline"}} onClick={()=>setPage("profile-setup")}>Edit →</span>
             </div>
           )}
-
           <input type="file" ref={fileRef} accept="image/*" style={{display:"none"}} onChange={handleFile}/>
           {!imageB64?(
             <div className="upload-zone" onClick={()=>fileRef.current.click()}>
@@ -1633,7 +1540,6 @@ export default function LawnPro(){
         </div>
       )}
 
-      {/* ── SHARE MODAL ── */}
       {showShare&&shareCardUrl&&(
         <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)setShowShare(false)}}>
           <div className="modal-sheet">
@@ -1642,48 +1548,27 @@ export default function LawnPro(){
             <div className="modal-content">
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,color:"var(--text)",marginBottom:6}}>Share Your Score 🌿</div>
               <div style={{fontSize:13,color:"var(--muted)",marginBottom:16}}>Your lawn scored <strong style={{color:"var(--sage-d)"}}>{result?.score}/100</strong> — let the world know!</div>
-
-              {/* Card preview */}
-              <div className="share-modal-preview">
-                <img src={shareCardUrl} alt="Share card" style={{width:"100%",borderRadius:"var(--r)"}}/>
-              </div>
-
-              {/* Native share / download */}
-              <button className="share-native-btn" onClick={shareNative}>
-                {typeof navigator.share!=="undefined"?"📤 Share Image":"⬇️ Download Image"}
-              </button>
-
-              {/* Platform captions */}
+              <div className="share-modal-preview"><img src={shareCardUrl} alt="Share card" style={{width:"100%",borderRadius:"var(--r)"}}/></div>
+              <button className="share-native-btn" onClick={shareNative}>{typeof navigator.share!=="undefined"?"📤 Share Image":"⬇️ Download Image"}</button>
               <div style={{fontSize:12,fontWeight:700,color:"var(--brown)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:10}}>Copy Caption For…</div>
               <div className="share-platform-grid">
-                {[
-                  {id:"instagram",icon:"📸",name:"Instagram"},
-                  {id:"twitter",icon:"🐦",name:"X / Twitter"},
-                  {id:"facebook",icon:"👥",name:"Facebook"},
-                ].map(p=>(
+                {[{id:"instagram",icon:"📸",name:"Instagram"},{id:"twitter",icon:"🐦",name:"X / Twitter"},{id:"facebook",icon:"👥",name:"Facebook"}].map(p=>(
                   <div className="share-platform-btn" key={p.id} onClick={()=>copyShareCaption(p.id)}>
                     <div className="share-platform-icon">{p.icon}</div>
                     <div className="share-platform-name">{p.name}</div>
                   </div>
                 ))}
-                <div className="share-platform-btn" onClick={async()=>{
-                  try{await navigator.clipboard.writeText(`lawnproapp.com`);showToast("Link copied!");}
-                  catch(e){}
-                }}>
+                <div className="share-platform-btn" onClick={async()=>{try{await navigator.clipboard.writeText(`lawnproapp.com`);showToast("Link copied!");}catch(e){}}}>
                   <div className="share-platform-icon">🔗</div>
                   <div className="share-platform-name">Copy Link</div>
                 </div>
               </div>
-
-              <div style={{fontSize:12,color:"var(--muted)",textAlign:"center",lineHeight:1.5}}>
-                Download the image, then post it with the copied caption on your platform of choice.
-              </div>
+              <div style={{fontSize:12,color:"var(--muted)",textAlign:"center",lineHeight:1.5}}>Download the image, then post it with the copied caption on your platform of choice.</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── ASSISTANT ── */}
       {tab==="assistant"&&(
         <div className="chat-wrap" style={{height:"calc(100vh - 57px)",paddingBottom:"68px"}}>
           <div className="chat-hdr">
@@ -1711,53 +1596,31 @@ export default function LawnPro(){
         </div>
       )}
 
-      {/* ── REMINDERS ── */}
       {tab==="reminders"&&(
         <div className="screen">
           <div style={{marginBottom:20}}><div className="eyebrow">Care Schedule</div><div className="stitle">Tips & Reminders</div></div>
-
-          {/* Notification permission banner */}
           {notifPermission==="default"&&!notifDismissed&&(
             <div className="notif-banner">
               <span style={{fontSize:24}}>🔔</span>
-              <div className="notif-banner-text">
-                <div className="notif-banner-title">Enable push notifications</div>
-                <div className="notif-banner-sub">Get real reminders for watering, mowing, and fertilizing</div>
-              </div>
+              <div className="notif-banner-text"><div className="notif-banner-title">Enable push notifications</div><div className="notif-banner-sub">Get real reminders for watering, mowing, and fertilizing</div></div>
               <button className="notif-enable-btn" onClick={requestNotifications}>Enable</button>
             </div>
           )}
-          {notifPermission==="granted"&&(
-            <div style={{background:"var(--sage-xl)",borderRadius:"var(--r)",padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
-              <span>✅</span>
-              <div style={{fontSize:13,color:"var(--sage-d)",fontWeight:600}}>Push notifications are enabled</div>
-            </div>
-          )}
-          {notifPermission==="denied"&&(
-            <div style={{background:"#fde8e8",border:"1px solid #f4b8b8",borderRadius:"var(--r)",padding:"12px 16px",marginBottom:16,fontSize:13,color:"var(--red)"}}>
-              🚫 Notifications blocked. To enable, open your browser settings and allow notifications for this site.
-            </div>
-          )}
-
-          {/* Live weather watering advice */}
+          {notifPermission==="granted"&&<div style={{background:"var(--sage-xl)",borderRadius:"var(--r)",padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}><span>✅</span><div style={{fontSize:13,color:"var(--sage-d)",fontWeight:600}}>Push notifications are enabled</div></div>}
+          {notifPermission==="denied"&&<div style={{background:"#fde8e8",border:"1px solid #f4b8b8",borderRadius:"var(--r)",padding:"12px 16px",marginBottom:16,fontSize:13,color:"var(--red)"}}>🚫 Notifications blocked. To enable, open your browser settings and allow notifications for this site.</div>}
           {!weather.loading&&(
             <div style={{background:"linear-gradient(135deg,#2563a8,#4a8ad4)",borderRadius:"var(--r)",padding:"14px 16px",marginBottom:16,color:"#fff",display:"flex",alignItems:"center",gap:12}}>
               <span style={{fontSize:28}}>{weather.icon}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{weather.city||userInfo.region} · {weather.temp}</div>
-                <div style={{fontSize:12,opacity:.82}}>{weather.lawn}</div>
-              </div>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700,marginBottom:2}}>{weather.city||userInfo.region} · {weather.temp}</div><div style={{fontSize:12,opacity:.82}}>{weather.lawn}</div></div>
               <button onClick={()=>loadWeather(userInfo.region)} style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.25)",borderRadius:20,padding:"5px 12px",color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Refresh</button>
             </div>
           )}
-
           <div className="sh">🌍 Seasonal Tips — {userInfo.region||"General"}</div>
           <div className="season-card" style={{marginBottom:22}}>
             <div className="season-badge">{season.emoji} {season.season}</div>
             <div className="season-title">{season.season} Lawn Care</div>
             {season.tips.map((t,i)=><div className="season-tip" key={i}><div className="season-dot"/>{t}</div>)}
           </div>
-
           <div className="sh">⏰ Care Reminders</div>
           {reminders.map(r=>(
             <div className="rem-card" key={r.id}>
@@ -1766,13 +1629,8 @@ export default function LawnPro(){
               <Toggle on={r.on} onToggle={()=>{
                 const nowOn=!r.on;
                 setReminders(p=>p.map(x=>x.id===r.id?{...x,on:nowOn}:x));
-                if(nowOn){
-                  showToast(`${r.name} enabled 🔔`);
-                  if(notifPermission==="granted") fireReminder(r);
-                  else if(notifPermission==="default") requestNotifications();
-                } else {
-                  showToast(`${r.name} disabled`);
-                }
+                if(nowOn){showToast(`${r.name} enabled 🔔`);if(notifPermission==="granted")fireReminder(r);else if(notifPermission==="default")requestNotifications();}
+                else showToast(`${r.name} disabled`);
               }}/>
             </div>
           ))}
@@ -1784,7 +1642,6 @@ export default function LawnPro(){
         </div>
       )}
 
-      {/* ── REPORTS ── */}
       {tab==="reports"&&(
         <div className="screen">
           <div style={{marginBottom:20}}>
@@ -1793,18 +1650,17 @@ export default function LawnPro(){
             <div style={{fontSize:13,color:"var(--muted)",marginTop:4}}>{reports.length} saved {reports.length===1?"report":"reports"}</div>
           </div>
           {isLoggedIn&&<div className="cloud-badge">☁️ Synced to your account</div>}
-          {/* Revenue dashboard — admin only */}
           {user?.email==="taylormathewwilson@yahoo.com"&&(
-          <><div className="sh">💰 Revenue Dashboard</div>
-          <div className="revenue-card">
-            <div className="rev-title">Affiliate & Sponsorship Earnings</div>
-            <div className="rev-grid">
-              <div className="rev-stat"><div className="rev-num">${affiliateStats.estEarnings.toFixed(2)}</div><div className="rev-label">Est. Earnings</div></div>
-              <div className="rev-stat"><div className="rev-num">{affiliateStats.clicks}</div><div className="rev-label">Total Clicks</div></div>
-              <div className="rev-stat"><div className="rev-num">{affiliateStats.sponsoredClicks}</div><div className="rev-label">Sponsored</div></div>
-            </div>
-            <div className="rev-note">Tap any product or partner link to track clicks. Estimates based on avg. affiliate commission rates.</div>
-          </div></>
+            <><div className="sh">💰 Revenue Dashboard</div>
+            <div className="revenue-card">
+              <div className="rev-title">Affiliate & Sponsorship Earnings</div>
+              <div className="rev-grid">
+                <div className="rev-stat"><div className="rev-num">${affiliateStats.estEarnings.toFixed(2)}</div><div className="rev-label">Est. Earnings</div></div>
+                <div className="rev-stat"><div className="rev-num">{affiliateStats.clicks}</div><div className="rev-label">Total Clicks</div></div>
+                <div className="rev-stat"><div className="rev-num">{affiliateStats.sponsoredClicks}</div><div className="rev-label">Sponsored</div></div>
+              </div>
+              <div className="rev-note">Tap any product or partner link to track clicks. Estimates based on avg. affiliate commission rates.</div>
+            </div></>
           )}
           {reports.length>=2&&(
             <>
@@ -1847,7 +1703,6 @@ export default function LawnPro(){
         </div>
       )}
 
-      {/* ── REPORT DETAIL ── */}
       {tab==="reports"&&selectedReport&&(()=>{
         const d=selectedReport.data?JSON.parse(selectedReport.data):selectedReport;
         return(
@@ -1862,13 +1717,7 @@ export default function LawnPro(){
               </div>
             </div>
             <div style={{padding:"0 20px 20px"}}>
-              {/* Photo */}
-              {d.imageBase64&&(
-                <div style={{borderRadius:16,overflow:"hidden",marginBottom:16,aspectRatio:"4/3"}}>
-                  <img src={`data:image/jpeg;base64,${d.imageBase64}`} alt="Lawn" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                </div>
-              )}
-              {/* Score header */}
+              {d.imageBase64&&<div style={{borderRadius:16,overflow:"hidden",marginBottom:16,aspectRatio:"4/3"}}><img src={`data:image/jpeg;base64,${d.imageBase64}`} alt="Lawn" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>}
               <div className="rh">
                 <div className="rh-label">Lawn Health Score</div>
                 <div className="rh-score"><span className="rh-num">{selectedReport.score}</span><span className="rh-unit">/100</span></div>
@@ -1876,14 +1725,9 @@ export default function LawnPro(){
                 <div className="rh-sum">{selectedReport.summary||d.summary}</div>
                 <div className="rh-bar-wrap"><div className="rh-bar" style={{width:`${selectedReport.score}%`}}/></div>
               </div>
-              {/* Issues */}
               {d.scientific?.issues_detected?.length>0&&(
-                <div className="rc">
-                  <div className="rc-head"><span className="rc-icon">⚠️</span><span className="rc-title">Issues Detected</span></div>
-                  <div className="chip-group">{d.scientific.issues_detected.map((iss,i)=><span key={i} style={{padding:"5px 12px",background:"#fde8e8",color:"#8a2020",borderRadius:20,fontSize:12,fontWeight:600}}>{iss}</span>)}</div>
-                </div>
+                <div className="rc"><div className="rc-head"><span className="rc-icon">⚠️</span><span className="rc-title">Issues Detected</span></div><div className="chip-group">{d.scientific.issues_detected.map((iss,i)=><span key={i} style={{padding:"5px 12px",background:"#fde8e8",color:"#8a2020",borderRadius:20,fontSize:12,fontWeight:600}}>{iss}</span>)}</div></div>
               )}
-              {/* Scientific */}
               {d.scientific&&(
                 <div className="rc">
                   <div className="rc-head"><span className="rc-icon">🔬</span><span className="rc-title">Scientific Breakdown</span><span className="badge b-sci">Lab Insights</span></div>
@@ -1900,22 +1744,16 @@ export default function LawnPro(){
                   </div>
                 </div>
               )}
-              {/* Advice */}
               {d.simple_advice&&(
                 <div className="rc">
                   <div className="rc-head"><span className="rc-icon">💬</span><span className="rc-title">Care Tips</span><span className="badge b-tip">Easy Read</span></div>
-                  {d.simple_advice.map((tip,i)=>(
-                    <div className="advice-item" key={i}><div className="advice-num">{i+1}</div><div className="advice-txt" dangerouslySetInnerHTML={{__html:tip}}/></div>
-                  ))}
+                  {d.simple_advice.map((tip,i)=><div className="advice-item" key={i}><div className="advice-num">{i+1}</div><div className="advice-txt" dangerouslySetInnerHTML={{__html:tip}}/></div>)}
                 </div>
               )}
-              {/* Weekly plan */}
               {d.weekly_plan&&isPro&&(
                 <div className="rc">
                   <div className="rc-head"><span className="rc-icon">🗓️</span><span className="rc-title">Weekly Plan</span></div>
-                  {DAYS.map(day=>d.weekly_plan[day]&&(
-                    <div className="plan-day" key={day}><div className="plan-day-name">{day}</div>{d.weekly_plan[day].map((task,i)=><div className="plan-task" key={i}><div className="plan-dot"/>{task}</div>)}</div>
-                  ))}
+                  {DAYS.map(day=>d.weekly_plan[day]&&<div className="plan-day" key={day}><div className="plan-day-name">{day}</div>{d.weekly_plan[day].map((task,i)=><div className="plan-task" key={i}><div className="plan-dot"/>{task}</div>)}</div>)}
                 </div>
               )}
               <button className="bs" onClick={()=>setSelectedReport(null)} style={{marginTop:8}}>← Back to Reports</button>
@@ -1925,89 +1763,46 @@ export default function LawnPro(){
         );
       })()}
 
-      {/* ── ACCOUNT ── */}
       {tab==="account"&&(
         <div className="screen">
           {!isLoggedIn?(
             <>
-              {/* Guest profile header */}
               <div className="guest-profile-header">
                 <div className="guest-profile-bg">🌿</div>
-                <div className="guest-avatar">
-                  {userInfo.name?userInfo.name[0].toUpperCase():"🌱"}
-                </div>
+                <div className="guest-avatar">{userInfo.name?userInfo.name[0].toUpperCase():"🌱"}</div>
                 <div className="guest-name">{userInfo.name||"Lawn Enthusiast"}</div>
                 <div className="guest-since">{userInfo.region||"Location not set"} · Member since today</div>
                 <div className="guest-plan-pill">🌿 Free Plan · Guest</div>
               </div>
-
-              {/* Usage stats */}
               <div className="profile-stat-row">
                 <div className="profile-stat"><div className="profile-stat-num">{reports.length}</div><div className="profile-stat-label">Reports</div></div>
                 <div className="profile-stat"><div className="profile-stat-num">{reports.length>0?Math.max(...reports.map(r=>r.score)):"-"}</div><div className="profile-stat-label">Best Score</div></div>
                 <div className="profile-stat"><div className="profile-stat-num">{Math.max(FREE_LIMIT-usageCount,0)}</div><div className="profile-stat-label">Analyses Left</div></div>
               </div>
-
-              {/* Lawn profile card */}
               <div className="lawn-profile-card">
-                <div className="lawn-profile-title">
-                  🌿 My Lawn Profile
-                  <span className="lawn-profile-edit" onClick={()=>setPage("profile-setup")}>Edit →</span>
-                </div>
-                {[
-                  {icon:"📍",label:"Region",value:userInfo.region||"Not set"},
-                  {icon:"🌱",label:"Grass type",value:lawnProfile.grassType||"Not set"},
-                  {icon:"🏔️",label:"Soil type",value:lawnProfile.soilType||"Not set"},
-                  {icon:"☀️",label:"Sun exposure",value:lawnProfile.sunExposure||"Not set"},
-                  {icon:"📐",label:"Lawn size",value:lawnProfile.lawnSize||"Not set"},
-                ].map(({icon,label,value})=>(
-                  <div className="lawn-detail-row" key={label}>
-                    <div className="lawn-detail-icon">{icon}</div>
-                    <div className="lawn-detail-label">{label}</div>
-                    <div className="lawn-detail-value" style={{color:value==="Not set"?"var(--muted)":"var(--text)"}}>{value}</div>
-                  </div>
+                <div className="lawn-profile-title">🌿 My Lawn Profile<span className="lawn-profile-edit" onClick={()=>setPage("profile-setup")}>Edit →</span></div>
+                {[{icon:"📍",label:"Region",value:userInfo.region||"Not set"},{icon:"🌱",label:"Grass type",value:lawnProfile.grassType||"Not set"},{icon:"🏔️",label:"Soil type",value:lawnProfile.soilType||"Not set"},{icon:"☀️",label:"Sun exposure",value:lawnProfile.sunExposure||"Not set"},{icon:"📐",label:"Lawn size",value:lawnProfile.lawnSize||"Not set"}].map(({icon,label,value})=>(
+                  <div className="lawn-detail-row" key={label}><div className="lawn-detail-icon">{icon}</div><div className="lawn-detail-label">{label}</div><div className="lawn-detail-value" style={{color:value==="Not set"?"var(--muted)":"var(--text)"}}>{value}</div></div>
                 ))}
               </div>
-
-              {/* What's included in Free */}
               <div className="free-perks">
                 <div className="free-perks-title">Your Free Plan Includes</div>
-                {[
-                  {yes:true,text:`${FREE_LIMIT} AI lawn analyses per month`},
-                  {yes:true,text:"Grass type detection from photo"},
-                  {yes:true,text:"Health score & scientific breakdown"},
-                  {yes:true,text:"Plain language care tips"},
-                  {yes:true,text:"Seasonal tips & care reminders"},
-                  {yes:true,text:"Product recommendations"},
-                  {yes:false,text:"Unlimited analyses (Pro)"},
-                  {yes:false,text:"LawnPro Assistant AI chat (Pro)"},
-                  {yes:false,text:"7-day personalized care plans (Pro)"},
-                  {yes:false,text:"Cloud report storage & sync (Pro)"},
-                ].map(({yes,text},i)=>(
-                  <div className="perk-row" key={i}>
-                    <div className={`perk-check${yes?" yes":" no"}`}>{yes?"✓":"✕"}</div>
-                    <div className={`perk-text${yes?"":" locked"}`}>{text}</div>
-                  </div>
+                {[{yes:true,text:`${FREE_LIMIT} AI lawn analyses per month`},{yes:true,text:"Grass type detection from photo"},{yes:true,text:"Health score & scientific breakdown"},{yes:true,text:"Plain language care tips"},{yes:true,text:"Seasonal tips & care reminders"},{yes:true,text:"Product recommendations"},{yes:false,text:"Unlimited analyses (Pro)"},{yes:false,text:"LawnPro Assistant AI chat (Pro)"},{yes:false,text:"7-day personalized care plans (Pro)"},{yes:false,text:"Cloud report storage & sync (Pro)"}].map(({yes,text},i)=>(
+                  <div className="perk-row" key={i}><div className={`perk-check${yes?" yes":" no"}`}>{yes?"✓":"✕"}</div><div className={`perk-text${yes?"":" locked"}`}>{text}</div></div>
                 ))}
               </div>
-
-              {/* Create account CTA */}
               <div className="signup-cta-card">
                 <div className="signup-cta-title">Save your progress</div>
                 <div className="signup-cta-sub">Create a free account to back up your reports to the cloud, access them on any device, and never lose your lawn history.</div>
                 <button className="signup-cta-btn" onClick={()=>setShowAuth(true)}>Create Free Account →</button>
                 <div className="signup-cta-note">Already have an account? <span style={{textDecoration:"underline",cursor:"pointer"}} onClick={()=>setShowAuth(true)}>Sign in</span></div>
               </div>
-
-              {/* Upgrade to Pro */}
               <div style={{background:"linear-gradient(135deg,#1e3a1e,#3a6a3a)",borderRadius:"var(--r)",padding:"20px",marginBottom:16,textAlign:"center",cursor:"pointer"}} onClick={()=>setShowPro(true)}>
                 <div style={{fontSize:24,marginBottom:8}}>👑</div>
                 <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:"#fff",marginBottom:6}}>Upgrade to Pro</div>
                 <div style={{fontSize:13,color:"rgba(255,255,255,.75)",marginBottom:14}}>Unlimited analyses, AI chat, weekly plans, and more for $7.99/mo</div>
                 <div style={{background:"#a8e06a",color:"#1e3a1e",borderRadius:30,padding:"10px 24px",display:"inline-block",fontWeight:700,fontSize:14}}>Start Free Trial →</div>
               </div>
-
-              {/* Quick links */}
               <div className="profile-section">
                 <div className="profile-row" onClick={()=>setTab("reminders")}><span className="profile-row-icon">⏰</span><span className="profile-row-label">Manage Reminders</span><span className="profile-row-arrow">›</span></div>
                 <div className="profile-row" onClick={()=>setTab("reports")}><span className="profile-row-icon">📋</span><span className="profile-row-label">My Reports</span><span className="profile-row-value">{reports.length} saved</span><span className="profile-row-arrow">›</span></div>
@@ -2020,17 +1815,13 @@ export default function LawnPro(){
                 <div className="profile-avatar">{initials(user.email)}</div>
                 <div className="profile-name">{displayName}</div>
                 <div className="profile-email">{user.email}</div>
-                <div className={`profile-plan-badge ${isPro?"plan-pro":"plan-free"}`}>
-                  {isPro?"👑 LawnPro Pro":"🌿 Free Plan"}
-                </div>
+                <div className={`profile-plan-badge ${isPro?"plan-pro":"plan-free"}`}>{isPro?"👑 LawnPro Pro":"🌿 Free Plan"}</div>
               </div>
-
               <div className="profile-stat-row">
                 <div className="profile-stat"><div className="profile-stat-num">{reports.length}</div><div className="profile-stat-label">Reports</div></div>
                 <div className="profile-stat"><div className="profile-stat-num">{reports.length>0?Math.max(...reports.map(r=>r.score)):"-"}</div><div className="profile-stat-label">Best Score</div></div>
                 <div className="profile-stat"><div className="profile-stat-num">{isPro?"∞":FREE_LIMIT-usageCount}</div><div className="profile-stat-label">Analyses Left</div></div>
               </div>
-
               {!isPro&&(
                 <div style={{background:"linear-gradient(135deg,#1e3a1e,#3a6a3a)",borderRadius:"var(--r)",padding:"20px",marginBottom:16,textAlign:"center",cursor:"pointer"}} onClick={()=>setShowPro(true)}>
                   <div style={{fontSize:24,marginBottom:8}}>👑</div>
@@ -2039,25 +1830,12 @@ export default function LawnPro(){
                   <div style={{background:"#a8e06a",color:"#1e3a1e",borderRadius:30,padding:"10px 24px",display:"inline-block",fontWeight:700,fontSize:14}}>Start Free Trial →</div>
                 </div>
               )}
-
               <div className="profile-section">
-                <div className="profile-row" onClick={()=>setPage("profile-setup")}>
-                  <span className="profile-row-icon">✏️</span><span className="profile-row-label">Edit Lawn Profile</span><span className="profile-row-arrow">›</span>
-                </div>
-                <div className="profile-row" onClick={()=>setTab("reminders")}>
-                  <span className="profile-row-icon">⏰</span><span className="profile-row-label">Manage Reminders</span><span className="profile-row-arrow">›</span>
-                </div>
-                <div className="profile-row" onClick={()=>setTab("reports")}>
-                  <span className="profile-row-icon">📋</span><span className="profile-row-label">My Reports</span><span className="profile-row-value">{reports.length} saved</span><span className="profile-row-arrow">›</span>
-                </div>
-                {isPro&&(
-                  <div className="profile-row" onClick={()=>window.open(STRIPE_PAYMENT_LINK||"https://billing.stripe.com","_blank")}>
-                    <span className="profile-row-icon">💳</span><span className="profile-row-label">Manage Subscription</span><span className="profile-row-value">Pro · $7.99/mo</span><span className="profile-row-arrow">›</span>
-                  </div>
-                )}
+                <div className="profile-row" onClick={()=>setPage("profile-setup")}><span className="profile-row-icon">✏️</span><span className="profile-row-label">Edit Lawn Profile</span><span className="profile-row-arrow">›</span></div>
+                <div className="profile-row" onClick={()=>setTab("reminders")}><span className="profile-row-icon">⏰</span><span className="profile-row-label">Manage Reminders</span><span className="profile-row-arrow">›</span></div>
+                <div className="profile-row" onClick={()=>setTab("reports")}><span className="profile-row-icon">📋</span><span className="profile-row-label">My Reports</span><span className="profile-row-value">{reports.length} saved</span><span className="profile-row-arrow">›</span></div>
+                {isPro&&<div className="profile-row" onClick={()=>window.open(STRIPE_PAYMENT_LINK||"https://billing.stripe.com","_blank")}><span className="profile-row-icon">💳</span><span className="profile-row-label">Manage Subscription</span><span className="profile-row-value">Pro · $7.99/mo</span><span className="profile-row-arrow">›</span></div>}
               </div>
-
-              {/* Referral section */}
               <div className="referral-card">
                 <div className="referral-title">🎁 Refer a Friend</div>
                 <div className="referral-sub">Share LawnPro and earn <strong style={{color:"#a8e06a"}}>1 free extra analysis</strong> for every friend who signs up. They get one too.</div>
@@ -2071,26 +1849,17 @@ export default function LawnPro(){
                   <div className="referral-stat"><div className="referral-stat-num">+{referrals.filter(r=>r.status==="completed").length}</div><div className="referral-stat-label">Bonus Analyses</div></div>
                 </div>
               </div>
-
               <div className="profile-section">
-                <div className="profile-row" onClick={()=>showToast("Privacy policy: lawnproapp.com/privacy")}>
-                  <span className="profile-row-icon">🔒</span><span className="profile-row-label">Privacy Policy</span><span className="profile-row-arrow">›</span>
-                </div>
-                <div className="profile-row" onClick={()=>showToast("Terms: lawnproapp.com/terms")}>
-                  <span className="profile-row-icon">📄</span><span className="profile-row-label">Terms of Service</span><span className="profile-row-arrow">›</span>
-                </div>
-                <div className="profile-row" onClick={()=>showToast("Affiliate disclosure: We earn commissions on qualifying purchases.")}>
-                  <span className="profile-row-icon">🤝</span><span className="profile-row-label">Affiliate Disclosure</span><span className="profile-row-arrow">›</span>
-                </div>
+                <div className="profile-row" onClick={()=>showToast("Privacy policy: lawnproapp.com/privacy")}><span className="profile-row-icon">🔒</span><span className="profile-row-label">Privacy Policy</span><span className="profile-row-arrow">›</span></div>
+                <div className="profile-row" onClick={()=>showToast("Terms: lawnproapp.com/terms")}><span className="profile-row-icon">📄</span><span className="profile-row-label">Terms of Service</span><span className="profile-row-arrow">›</span></div>
+                <div className="profile-row" onClick={()=>showToast("Affiliate disclosure: We earn commissions on qualifying purchases.")}><span className="profile-row-icon">🤝</span><span className="profile-row-label">Affiliate Disclosure</span><span className="profile-row-arrow">›</span></div>
               </div>
-
               <button className="signout-btn" onClick={handleSignOut}>Sign Out</button>
             </>
           )}
         </div>
       )}
 
-      {/* Tab Bar */}
       <div className="tab-bar">
         {[{id:"home",icon:"🏡",label:"Home"},{id:"upload",icon:"📸",label:"Analyze"},{id:"assistant",icon:"🤖",label:"Assistant"},{id:"reminders",icon:"⏰",label:"Reminders"},{id:"reports",icon:"📋",label:"Reports"},{id:"account",icon:"👤",label:"Account"}].map(t=>(
           <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`} onClick={()=>{setTab(t.id);if(t.id==="upload")resetUpload()}}>
